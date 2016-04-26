@@ -1,0 +1,144 @@
+
+## Project: Amazon product review Data Analysis
+## Author: Suyash Gautam
+## This project is about working with Amazon Product review data set using R's data manipulation techniques to find suspicious points in the data set.
+
+
+## FILE IMPORT
+
+```{r}
+amazonReviews <- read.csv("~/Documents/R_dir/amazonReviews.csv")
+head(amazonReviews)
+View(amazonReviews)
+```
+
+## SOME DATA TRANSFORMATION
+
+It seems that the input dates/times are stored as the number of seconds from January 1, 1970.
+I used the structure command to create the POSIX date values and 
+transformed the 'time' variable in the data set.
+
+```{r}
+newtime <- structure(amazonReviews$time, class=c('POSIXt','POSIXct'))
+head(newtime)
+amazonReviews$time <- newtime
+class(newtime)
+```
+
+
+Now time is in the proper format. Specific months and weekdays can be easily extracted from the time variable for further analysis
+
+
+# Dealing with 'helpfulness' variable.
+
+```{r}
+h <- amazonReviews$helpfulness
+head(h)
+class(h)
+```
+
+The helpfulness variable is a factor variable and needs to be converted into a numeric variable to analyze
+
+```{r}
+ch <- as.character(h)
+class(ch)
+newh <- sapply(strsplit(ch, "/"), 
+               function(ch) { 
+                 ch <- as.numeric(ch); 
+                 100 * ch[1] / ch[2]
+                 })     
+head(newh)
+class(newh)
+amazonReviews$helpfulness <- newh
+```
+
+Now the helpfulness scores have been converted to numeric format(percentage) and can be ananlysed further. Although there are a lot of NAN's in the helpfulness value that resulted from division by 0, I will skip that part for the purposes of this research.
+
+Lets summarize score and helpfulness
+
+```{r}
+summary(amazonReviews$score)
+hist(amazonReviews$helpfulness)
+summary(amazonReviews$helpfulness)
+```
+
+The summary of the helpfulness variable shows that there are a few values with a helpfulness score greater 
+than 100%. This is unlikely and suspicious. Let's subset the data to see these values 
+
+```{r}
+s <- subset(amazonReviews, newh > 100)
+head(s)
+```
+
+## SUSPICIOUS DATA POINT 1 - WRONG DATA ENTRY
+
+Subsetting the data set shows us there are 5 values with a helpfulness percentage 
+more than 100 which is unlikely. They possibly represent wrong data entry, most likely REVERSE ENTRY.
+If we look at observation 1199 at the original file, profile name is 'Ana Borges' with a helpfulness value of 18/15, which could easily be 15/18. Similary, observation 1730, Ponyo is coded as 19/18. This can easily be 18/19. Observation 64891, J. E. Stephens "Jeanne" is coded as 3/1. Observation 61975, 'Wile E. Coyote "^. .^"' is coded as 15/14 and observation 112,  Mary A. Parham is coded as 5/4. Correcting these will fix this problem.
+
+
+## SUSPICIOUS DATA POINT 2 - FUTURE DATES/ Possible fraudsters 
+# Working with time data
+
+```{r}
+summary(newtime)
+```
+
+The sumamry shows that there are reviews made in the year 2037. This is impossible and arouses suspicioun.
+
+Clearly, there is something wrong here. There are reviews for future dates, which is impossible. Lets look deeper. Since I was given this data set on March 15th, 2016, for the purposes of this research I will assume 
+that it was collected possibly before march 10, 2016. Just to be on the safe side, Lets subset the data for dates after December 12, 2014 and see what we find.
+
+```{r}
+library(plyr)
+t <- subset(amazonReviews, newtime > "2014-12-31")
+t1 <- arrange(t, desc(time))
+head(t1)
+View(t1)
+#randomt <- t[sample(1:nrow(t), 500, replace = FALSE), 4:7 ]
+#View(randomt)
+```
+
+The data looks alright up until the end of 2015. Lets subset it further to reveal only 2016 data
+
+```{r}
+t2 <- subset(amazonReviews, newtime > "2015-12-31")
+t3 <- arrange(t2, desc(time))
+head(t3)
+# View(t3)
+```
+ 
+After looking at the 't3' data set, it is evident that there are a huge number of product reviews asociated
+with id "B000POUIOE", a few with id "B00099XOQO" and one with "B001EO5YAC". All these reviews have dates in the future and are all good reviews ranging from 3 to 5. These productId's have different user ID's possibly hinting that these users were paid to write fake reviews.
+
+These findings can help identify fraudulent sellers and should be kept in seperate records. They should not be part of analysis of the genuine product review data.  
+
+
+## SUSPICIOUS DATA POINT 3 - Possible automated account
+
+Another strange thing I found sifting through the 't1' subset was that a majority of these entries belong to profileName "AnonReviewer" with userID "AZQ4A457E5GWJ02". 
+Lets go deeper and subset the data with just this profileName.
+
+```{r}
+reviewer <- subset(amazonReviews, profileName == "AnonReviewer")
+View(reviewer)
+nrow(reviewer)
+reviewer2 <- arrange(reviewer, desc(time))
+head(reviewer2)
+```
+
+
+
+
+So the AnonReviewer wrote 233 reviews. When ordered by time, we see that reviews for more than one 
+productID were made at the same time. As an example, ID's "B00469VTOW", "B00434FTDM", "B00060PTLO",
+"B0015R9BQG", "B004M0Y8T8" were reviewed by AnonReviewer on 2015-03-31 eaxctly at 09:08:07.
+That's not possible, not by a human anyway. This confirms that AnonReviewer is a bot/script and has probably written fake reviews. Removing these observations from the data set is recommended. 
+
+
+
+
+
+
+
+
